@@ -3658,7 +3658,7 @@ build_container() {
     local _mount_clean="${ALLOW_MOUNT_FS// /}"
     _mount_clean="${_mount_clean%%,}"
     _mount_clean="${_mount_clean##,}"
-    _mount_clean="${_mount_clean%%;}"  
+    _mount_clean="${_mount_clean%%;}"
     _mount_clean="${_mount_clean//,/;}"
     if [ -n "$_mount_clean" ]; then
       [ -n "$FEATURES" ] && FEATURES="$FEATURES,"
@@ -5287,6 +5287,15 @@ create_lxc_container() {
       apt_update_safe
       if $STD apt-get install -y --only-upgrade pve-container lxc-pve; then
         msg_ok "LXC stack upgraded."
+        # Verify pct binary still works after upgrade (partial upgrades can break Perl modules)
+        if ! pct list &>/dev/null; then
+          msg_error "LXC stack upgrade caused PVE tool breakage (likely Perl module incompatibility)."
+          msg_custom "⚠️" "${YW}" "A partial package upgrade has left the PVE stack in an inconsistent state."
+          msg_custom "🔧" "${YW}" "Please run the following on the Proxmox host, then retry:"
+          echo -e "${TAB}  apt update && apt dist-upgrade -y"
+          echo -e "${TAB}  reboot"
+          return 3
+        fi
         if [[ "$do_retry" == "yes" ]]; then
           msg_info "Retrying container creation after upgrade"
           if pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" $PCT_OPTIONS >>"$LOGFILE" 2>&1; then
@@ -5385,10 +5394,35 @@ create_lxc_container() {
   fi
 
   msg_info "Validating storage '$CONTAINER_STORAGE'"
-  STORAGE_TYPE=$(grep -E "^[^:]+: $CONTAINER_STORAGE$" /etc/pve/storage.cfg | cut -d: -f1 | head -1 || true)
+  # Check if storage.cfg is accessible (pmxcfs must be mounted)
+  if [[ ! -f /etc/pve/storage.cfg ]]; then
+    if ! mountpoint -q /etc/pve 2>/dev/null; then
+      msg_error "Proxmox cluster filesystem (pmxcfs) is not mounted at /etc/pve."
+      msg_custom "🔧" "${YW}" "Try: systemctl restart pve-cluster"
+    else
+      msg_error "/etc/pve/storage.cfg does not exist."
+      msg_custom "🔧" "${YW}" "Check Proxmox cluster filesystem integrity: pvecm status"
+    fi
+    exit 213
+  fi
+
+  STORAGE_TYPE=$(grep -E "^[^:]+:[[:space:]]*$CONTAINER_STORAGE[[:space:]]*$" /etc/pve/storage.cfg | cut -d: -f1 | head -1 || true)
+
+  # Fallback: use pvesm status to determine storage type
+  if [[ -z "$STORAGE_TYPE" ]]; then
+    STORAGE_TYPE=$(pvesm status -storage "$CONTAINER_STORAGE" 2>/dev/null | awk 'NR>1{print $2}')
+  fi
 
   if [[ -z "$STORAGE_TYPE" ]]; then
     msg_error "Storage '$CONTAINER_STORAGE' not found in /etc/pve/storage.cfg"
+    msg_custom "📋" "${YW}" "Available storages: $(pvesm status 2>/dev/null | awk 'NR>1{printf "%s (%s) ", $1, $2}' || echo 'n/a')"
+    if [[ -r /etc/pve/storage.cfg ]]; then
+      msg_custom "📋" "${YW}" "Storage definitions found in config:"
+      grep -E '^[a-z]+:' /etc/pve/storage.cfg 2>/dev/null | while IFS= read -r _line; do
+        echo "${TAB}  $_line"
+      done
+    fi
+    msg_custom "📖" "${YW}" "See https://pve.proxmox.com/wiki/Storage for storage configuration details."
     exit 213
   fi
 
@@ -5811,6 +5845,17 @@ create_lxc_container() {
   if ! pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" $PCT_OPTIONS >"$LOGFILE" 2>&1; then
     msg_debug "Container creation failed on ${TEMPLATE_STORAGE}. Checking error..."
 
+    # Check for Perl module breakage (partial PVE upgrade)
+    if grep -qiE 'Compilation failed|Bareword.*not allowed' "$LOGFILE"; then
+      msg_error "Container creation failed due to broken Perl modules on the PVE host."
+      msg_custom "⚠️" "${YW}" "This usually happens after a partial PVE package upgrade."
+      msg_custom "🔧" "${YW}" "Please run the following on the Proxmox host, then retry:"
+      echo -e "${TAB}  apt update && apt dist-upgrade -y"
+      echo -e "${TAB}  reboot"
+      _flush_pct_log
+      exit 232
+    fi
+
     # Check if CTID collision (race condition: ID claimed between validation and creation)
     if grep -qiE 'already exists|already in use' "$LOGFILE"; then
       local old_ctid="$CTID"
@@ -5915,7 +5960,7 @@ create_lxc_container() {
       fi
     fi # close CTID collision else-branch
   fi
-  set +f  # re-enable globbing after pct create block
+  set +f # re-enable globbing after pct create block
 
   # Verify container exists (allow up to 10s for pmxcfs sync in clusters)
   local _pct_visible=false
