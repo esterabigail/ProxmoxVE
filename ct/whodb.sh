@@ -39,7 +39,7 @@ function update_script() {
     msg_info "Starting Service"
     systemctl start whodb
     msg_ok "Started Service"
-    msg_ok "Updated ${APP}"
+    msg_ok "Updated successfully!"
   fi
   exit
 }
