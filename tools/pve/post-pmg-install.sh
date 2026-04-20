@@ -196,7 +196,7 @@ Types: deb
 URIs: https://enterprise.proxmox.com/debian/pmg
 Suites: ${VERSION}
 Components: pmg-enterprise
-Signed-By: /etc/apt/keyrings/pmg.gpg
+Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
 EOF
       msg_ok "Added 'pmg-enterprise' repository"
       ;;
@@ -264,7 +264,7 @@ Types: deb
 URIs: http://download.proxmox.com/debian/pmg
 Suites: ${VERSION}
 Components: pmg-no-subscription
-Signed-By: /etc/apt/keyrings/pmg.gpg
+Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
 EOF
       msg_ok "Added 'pmg-no-subscription' repository"
       ;;
@@ -291,7 +291,7 @@ Types: deb
 URIs: http://download.proxmox.com/debian/pmg
 Suites: ${VERSION}
 Components: pmgtest
-Signed-By: /etc/apt/keyrings/pmg.gpg
+Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
 Enabled: no
 EOF
       msg_ok "Added 'pmgtest' repository"
