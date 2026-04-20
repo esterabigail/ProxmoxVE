@@ -5250,71 +5250,126 @@ create_lxc_container() {
   # Extract Debian OS minor from template name: debian-13-standard_13.1-1_amd64.tar.zst => "13.1"
   parse_template_osver() { sed -n 's/.*_\([0-9][0-9]*\(\.[0-9]\+\)\?\)-.*/\1/p' <<<"$1"; }
 
-  # Switch to Debian 12 template and retry pct create
+  # Switch to the previous OS major version template and retry pct create
+  # Determines the fallback version automatically based on available templates.
   # Returns: 0 = success, 1 = failed
-  fallback_to_debian12() {
+  fallback_to_previous_os_version() {
     local old_template="$TEMPLATE"
-    msg_info "Searching for Debian 12 template"
+    local os_type="${PCT_OSTYPE:-}"
+    local current_ver="${PCT_OSVERSION:-}"
 
-    # Find latest Debian 12 template
-    local deb12_template=""
-    mapfile -t _deb12_local < <(
+    # Determine template search pattern based on OS type
+    local tpl_pattern=""
+    case "$os_type" in
+    debian | ubuntu) tpl_pattern="-standard_" ;;
+    alpine | fedora | rocky | centos) tpl_pattern="-default_" ;;
+    *) tpl_pattern="" ;;
+    esac
+
+    msg_info "Searching for an older $os_type template (current: $os_type $current_ver)"
+
+    # Collect all available versions for this OS type (local + online)
+    local -a all_versions=()
+
+    # Local templates
+    mapfile -t _local_vers < <(
       pveam list "$TEMPLATE_STORAGE" 2>/dev/null |
-        awk '$1 ~ /debian-12/ && $1 ~ /-standard_/ {print $1}' |
-        sed 's|.*/||' | sort -t - -k 2 -V
+        awk -v os="$os_type" -v pat="$tpl_pattern" '$1 ~ ("^"os"|/"os) && $1 ~ pat {print $1}' |
+        sed 's|.*/||' |
+        sed -E "s/^${os_type}-([0-9]+(\.[0-9]+)?).*/\1/" |
+        sort -u -V
     )
-    if [[ ${#_deb12_local[@]} -gt 0 ]]; then
-      deb12_template="${_deb12_local[-1]}"
-    else
-      # Check online
-      if command -v timeout &>/dev/null; then
-        timeout 30 pveam update >/dev/null 2>&1 || true
-      else
-        pveam update >/dev/null 2>&1 || true
-      fi
-      mapfile -t _deb12_online < <(
-        pveam available -section system 2>/dev/null |
-          awk '{print $2}' |
-          grep -E '^debian-12.*-standard_' |
-          sort -t - -k 2 -V 2>/dev/null || true
-      )
-      [[ ${#_deb12_online[@]} -gt 0 ]] && deb12_template="${_deb12_online[-1]}"
-    fi
+    all_versions+=("${_local_vers[@]}")
 
-    if [[ -z "$deb12_template" ]]; then
-      msg_error "No Debian 12 template found."
+    # Online templates (only if needed)
+    if command -v timeout &>/dev/null; then
+      timeout 30 pveam update >/dev/null 2>&1 || true
+    else
+      pveam update >/dev/null 2>&1 || true
+    fi
+    mapfile -t _online_vers < <(
+      pveam available -section system 2>/dev/null |
+        awk '{print $2}' |
+        grep -E "^${os_type}-[0-9]" |
+        { [[ -n "$tpl_pattern" ]] && grep "$tpl_pattern" || cat; } |
+        sed -E "s/^${os_type}-([0-9]+(\.[0-9]+)?).*/\1/" |
+        sort -u -V 2>/dev/null || true
+    )
+    all_versions+=("${_online_vers[@]}")
+
+    # Deduplicate and sort, find the highest version below current
+    local fallback_ver=""
+    fallback_ver=$(printf '%s\n' "${all_versions[@]}" | sort -u -V | awk -v cur="$current_ver" '{
+      # Compare major versions: extract major part
+      split($0, a, ".")
+      split(cur, b, ".")
+      if (a[1]+0 < b[1]+0) ver=$0
+    } END { if (ver) print ver }')
+
+    if [[ -z "$fallback_ver" ]]; then
+      msg_error "No older $os_type template version found."
       return 1
     fi
 
-    msg_ok "Found Debian 12 template: $deb12_template"
+    msg_ok "Fallback version: $os_type $fallback_ver"
+
+    # Find the actual template file for this version
+    local fallback_search="${os_type}-${fallback_ver}"
+    local fallback_template=""
+
+    # Check local first
+    mapfile -t _fb_local < <(
+      pveam list "$TEMPLATE_STORAGE" 2>/dev/null |
+        awk -v search="$fallback_search" -v pat="$tpl_pattern" '$1 ~ search && $1 ~ pat {print $1}' |
+        sed 's|.*/||' | sort -t - -k 2 -V
+    )
+    if [[ ${#_fb_local[@]} -gt 0 ]]; then
+      fallback_template="${_fb_local[-1]}"
+    else
+      # Check online
+      mapfile -t _fb_online < <(
+        pveam available -section system 2>/dev/null |
+          awk '{print $2}' |
+          grep -E "^${fallback_search}.*${tpl_pattern}" |
+          sort -t - -k 2 -V 2>/dev/null || true
+      )
+      [[ ${#_fb_online[@]} -gt 0 ]] && fallback_template="${_fb_online[-1]}"
+    fi
+
+    if [[ -z "$fallback_template" ]]; then
+      msg_error "No template found for $os_type $fallback_ver."
+      return 1
+    fi
+
+    msg_ok "Found template: $fallback_template"
 
     # Download if needed
-    local deb12_path
-    deb12_path="$(pvesm path "$TEMPLATE_STORAGE:vztmpl/$deb12_template" 2>/dev/null || true)"
-    [[ -z "$deb12_path" ]] && deb12_path="/var/lib/vz/template/cache/$deb12_template"
+    local fallback_path
+    fallback_path="$(pvesm path "$TEMPLATE_STORAGE:vztmpl/$fallback_template" 2>/dev/null || true)"
+    [[ -z "$fallback_path" ]] && fallback_path="/var/lib/vz/template/cache/$fallback_template"
 
-    if [[ ! -f "$deb12_path" ]]; then
-      msg_info "Downloading Debian 12 template"
-      if ! pveam download "$TEMPLATE_STORAGE" "$deb12_template" >>"${BUILD_LOG:-/dev/null}" 2>&1; then
-        msg_error "Failed to download Debian 12 template."
+    if [[ ! -f "$fallback_path" ]]; then
+      msg_info "Downloading $os_type $fallback_ver template"
+      if ! pveam download "$TEMPLATE_STORAGE" "$fallback_template" >>"${BUILD_LOG:-/dev/null}" 2>&1; then
+        msg_error "Failed to download $os_type $fallback_ver template."
         return 1
       fi
       msg_ok "Template downloaded"
     fi
 
     # Update variables
-    TEMPLATE="$deb12_template"
-    TEMPLATE_PATH="$deb12_path"
-    PCT_OSVERSION="12"
+    TEMPLATE="$fallback_template"
+    TEMPLATE_PATH="$fallback_path"
+    PCT_OSVERSION="$fallback_ver"
     export PCT_OSVERSION
 
     # Retry pct create
-    msg_info "Retrying container creation with Debian 12"
+    msg_info "Retrying container creation with $os_type $fallback_ver"
     if pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" $PCT_OPTIONS >>"$LOGFILE" 2>&1; then
-      msg_ok "Container created successfully with Debian 12 (fallback from $old_template)."
+      msg_ok "Container created successfully with $os_type $fallback_ver (fallback from $old_template)."
       return 0
     else
-      msg_error "Container creation with Debian 12 also failed. See $LOGFILE"
+      msg_error "Container creation with $os_type $fallback_ver also failed. See $LOGFILE"
       return 1
     fi
   }
@@ -5350,12 +5405,12 @@ create_lxc_container() {
     echo "  lxc-pve     : installed=${_lxcp_i:-n/a}  candidate=${_lxcp_c:-n/a}"
     echo
 
-    # Offer Debian 12 fallback when using Debian 13 template
-    local _has_deb12_option=false
-    if [[ "${PCT_OSTYPE:-}" == "debian" && "${TEMPLATE:-}" == *debian-13* ]]; then
-      _has_deb12_option=true
+    # Offer older OS version fallback when template version might be too new for LXC stack
+    local _has_fallback_option=false
+    if [[ -n "${PCT_OSTYPE:-}" && -n "${PCT_OSVERSION:-}" ]]; then
+      _has_fallback_option=true
       echo "  [1] Upgrade LXC stack now (recommended)"
-      echo "  [2] Use Debian 12 template instead (may not work with all scripts)"
+      echo "  [2] Use an older ${PCT_OSTYPE} template instead (may not work with all scripts)"
       echo "  [3] Cancel"
       echo
       read -rp "Select option [1/2/3]: " _ans </dev/tty
@@ -5363,20 +5418,20 @@ create_lxc_container() {
       read -rp "Do you want to upgrade now? [y/N] " _ans </dev/tty
     fi
 
-    if [[ "$_has_deb12_option" == true ]]; then
+    if [[ "$_has_fallback_option" == true ]]; then
       case "$_ans" in
       1)
         _ans="y"
         ;;
       2)
         if [[ "$do_retry" == "yes" ]]; then
-          if fallback_to_debian12; then
+          if fallback_to_previous_os_version; then
             return 0
           else
             return 3
           fi
         else
-          msg_custom "ℹ️" "${YW}" "Debian 12 fallback is only available during container creation."
+          msg_custom "ℹ️" "${YW}" "OS version fallback is only available during container creation."
           return 2
         fi
         ;;
@@ -6007,18 +6062,12 @@ create_lxc_container() {
               case $rc in
               0) : ;; # success - container created, continue
               2 | 3)
-                # Upgrade declined or failed — offer Debian 12 as last resort
-                if [[ "${PCT_OSTYPE:-}" == "debian" && "${TEMPLATE:-}" == *debian-13* ]]; then
-                  msg_warn "Attempting Debian 12 fallback as last resort"
-                  if fallback_to_debian12; then
-                    : # success
-                  else
-                    msg_error "All recovery options exhausted. Please inspect: $LOGFILE"
-                    _flush_pct_log
-                    exit 231
-                  fi
+                # Upgrade declined or failed — try older OS version as last resort
+                msg_warn "Attempting older ${PCT_OSTYPE:-} version as last resort"
+                if fallback_to_previous_os_version; then
+                  : # success
                 else
-                  msg_error "Please update and re-run: apt update && apt install --only-upgrade pve-container lxc-pve"
+                  msg_error "All recovery options exhausted. Please inspect: $LOGFILE"
                   _flush_pct_log
                   exit 231
                 fi
@@ -6046,18 +6095,12 @@ create_lxc_container() {
             case $rc in
             0) : ;; # success - container created, continue
             2 | 3)
-              # Upgrade declined or failed — offer Debian 12 as last resort
-              if [[ "${PCT_OSTYPE:-}" == "debian" && "${TEMPLATE:-}" == *debian-13* ]]; then
-                msg_warn "Attempting Debian 12 fallback as last resort"
-                if fallback_to_debian12; then
-                  : # success
-                else
-                  msg_error "All recovery options exhausted. Please inspect: $LOGFILE"
-                  _flush_pct_log
-                  exit 231
-                fi
+              # Upgrade declined or failed — try older OS version as last resort
+              msg_warn "Attempting older ${PCT_OSTYPE:-} version as last resort"
+              if fallback_to_previous_os_version; then
+                : # success
               else
-                msg_error "Please update and re-run: apt update && apt install --only-upgrade pve-container lxc-pve"
+                msg_error "All recovery options exhausted. Please inspect: $LOGFILE"
                 _flush_pct_log
                 exit 231
               fi
