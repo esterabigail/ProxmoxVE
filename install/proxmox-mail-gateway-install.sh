@@ -21,7 +21,6 @@ setup_deb822_repo \
   "trixie" \
   "pmg-no-subscription"
 $STD apt install -y proxmox-mailgateway-container
-
 msg_ok "Installed Proxmox Mail Gateway"
 
 motd_ssh
