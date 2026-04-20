@@ -5250,9 +5250,78 @@ create_lxc_container() {
   # Extract Debian OS minor from template name: debian-13-standard_13.1-1_amd64.tar.zst => "13.1"
   parse_template_osver() { sed -n 's/.*_\([0-9][0-9]*\(\.[0-9]\+\)\?\)-.*/\1/p' <<<"$1"; }
 
+  # Switch to Debian 12 template and retry pct create
+  # Returns: 0 = success, 1 = failed
+  fallback_to_debian12() {
+    local old_template="$TEMPLATE"
+    msg_info "Searching for Debian 12 template"
+
+    # Find latest Debian 12 template
+    local deb12_template=""
+    mapfile -t _deb12_local < <(
+      pveam list "$TEMPLATE_STORAGE" 2>/dev/null |
+        awk '$1 ~ /debian-12/ && $1 ~ /-standard_/ {print $1}' |
+        sed 's|.*/||' | sort -t - -k 2 -V
+    )
+    if [[ ${#_deb12_local[@]} -gt 0 ]]; then
+      deb12_template="${_deb12_local[-1]}"
+    else
+      # Check online
+      if command -v timeout &>/dev/null; then
+        timeout 30 pveam update >/dev/null 2>&1 || true
+      else
+        pveam update >/dev/null 2>&1 || true
+      fi
+      mapfile -t _deb12_online < <(
+        pveam available -section system 2>/dev/null |
+          awk '{print $2}' |
+          grep -E '^debian-12.*-standard_' |
+          sort -t - -k 2 -V 2>/dev/null || true
+      )
+      [[ ${#_deb12_online[@]} -gt 0 ]] && deb12_template="${_deb12_online[-1]}"
+    fi
+
+    if [[ -z "$deb12_template" ]]; then
+      msg_error "No Debian 12 template found."
+      return 1
+    fi
+
+    msg_ok "Found Debian 12 template: $deb12_template"
+
+    # Download if needed
+    local deb12_path
+    deb12_path="$(pvesm path "$TEMPLATE_STORAGE:vztmpl/$deb12_template" 2>/dev/null || true)"
+    [[ -z "$deb12_path" ]] && deb12_path="/var/lib/vz/template/cache/$deb12_template"
+
+    if [[ ! -f "$deb12_path" ]]; then
+      msg_info "Downloading Debian 12 template"
+      if ! pveam download "$TEMPLATE_STORAGE" "$deb12_template" >>"${BUILD_LOG:-/dev/null}" 2>&1; then
+        msg_error "Failed to download Debian 12 template."
+        return 1
+      fi
+      msg_ok "Template downloaded"
+    fi
+
+    # Update variables
+    TEMPLATE="$deb12_template"
+    TEMPLATE_PATH="$deb12_path"
+    PCT_OSVERSION="12"
+    export PCT_OSVERSION
+
+    # Retry pct create
+    msg_info "Retrying container creation with Debian 12"
+    if pct create "$CTID" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" $PCT_OPTIONS >>"$LOGFILE" 2>&1; then
+      msg_ok "Container created successfully with Debian 12 (fallback from $old_template)."
+      return 0
+    else
+      msg_error "Container creation with Debian 12 also failed. See $LOGFILE"
+      return 1
+    fi
+  }
+
   # Offer upgrade for pve-container/lxc-pve if candidate > installed; optional auto-retry pct create
   # Returns:
-  #   0 = no upgrade needed
+  #   0 = no upgrade needed / container created after upgrade or fallback
   #   1 = upgraded (and if do_retry=yes and retry succeeded, creation done)
   #   2 = user declined
   #   3 = upgrade attempted but failed OR retry failed
@@ -5280,7 +5349,43 @@ create_lxc_container() {
     echo "  pve-container: installed=${_pvec_i:-n/a}  candidate=${_pvec_c:-n/a}"
     echo "  lxc-pve     : installed=${_lxcp_i:-n/a}  candidate=${_lxcp_c:-n/a}"
     echo
-    read -rp "Do you want to upgrade now? [y/N] " _ans </dev/tty
+
+    # Offer Debian 12 fallback when using Debian 13 template
+    local _has_deb12_option=false
+    if [[ "${PCT_OSTYPE:-}" == "debian" && "${TEMPLATE:-}" == *debian-13* ]]; then
+      _has_deb12_option=true
+      echo "  [1] Upgrade LXC stack now (recommended)"
+      echo "  [2] Use Debian 12 template instead (may not work with all scripts)"
+      echo "  [3] Cancel"
+      echo
+      read -rp "Select option [1/2/3]: " _ans </dev/tty
+    else
+      read -rp "Do you want to upgrade now? [y/N] " _ans </dev/tty
+    fi
+
+    if [[ "$_has_deb12_option" == true ]]; then
+      case "$_ans" in
+      1)
+        _ans="y"
+        ;;
+      2)
+        if [[ "$do_retry" == "yes" ]]; then
+          if fallback_to_debian12; then
+            return 0
+          else
+            return 3
+          fi
+        else
+          msg_custom "ℹ️" "${YW}" "Debian 12 fallback is only available during container creation."
+          return 2
+        fi
+        ;;
+      *)
+        return 2
+        ;;
+      esac
+    fi
+
     case "${_ans,,}" in
     y | yes)
       msg_info "Upgrading Proxmox LXC stack (pve-container, lxc-pve)"
@@ -5901,15 +6006,22 @@ create_lxc_container() {
               rc=$?
               case $rc in
               0) : ;; # success - container created, continue
-              2)
-                msg_error "Upgrade declined. Please update and re-run: apt update && apt install --only-upgrade pve-container lxc-pve"
-                _flush_pct_log
-                exit 231
-                ;;
-              3)
-                msg_error "Upgrade and/or retry failed. Please inspect: $LOGFILE"
-                _flush_pct_log
-                exit 231
+              2 | 3)
+                # Upgrade declined or failed — offer Debian 12 as last resort
+                if [[ "${PCT_OSTYPE:-}" == "debian" && "${TEMPLATE:-}" == *debian-13* ]]; then
+                  msg_warn "Attempting Debian 12 fallback as last resort"
+                  if fallback_to_debian12; then
+                    : # success
+                  else
+                    msg_error "All recovery options exhausted. Please inspect: $LOGFILE"
+                    _flush_pct_log
+                    exit 231
+                  fi
+                else
+                  msg_error "Please update and re-run: apt update && apt install --only-upgrade pve-container lxc-pve"
+                  _flush_pct_log
+                  exit 231
+                fi
                 ;;
               esac
             else
@@ -5933,15 +6045,22 @@ create_lxc_container() {
             rc=$?
             case $rc in
             0) : ;; # success - container created, continue
-            2)
-              msg_error "Upgrade declined. Please update and re-run: apt update && apt install --only-upgrade pve-container lxc-pve"
-              _flush_pct_log
-              exit 231
-              ;;
-            3)
-              msg_error "Upgrade and/or retry failed. Please inspect: $LOGFILE"
-              _flush_pct_log
-              exit 231
+            2 | 3)
+              # Upgrade declined or failed — offer Debian 12 as last resort
+              if [[ "${PCT_OSTYPE:-}" == "debian" && "${TEMPLATE:-}" == *debian-13* ]]; then
+                msg_warn "Attempting Debian 12 fallback as last resort"
+                if fallback_to_debian12; then
+                  : # success
+                else
+                  msg_error "All recovery options exhausted. Please inspect: $LOGFILE"
+                  _flush_pct_log
+                  exit 231
+                fi
+              else
+                msg_error "Please update and re-run: apt update && apt install --only-upgrade pve-container lxc-pve"
+                _flush_pct_log
+                exit 231
+              fi
               ;;
             esac
           else
