@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 minthcm
+# Copyright (c) 2021-2026 community-scripts ORG
 # Author: MintHCM
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/minthcm/minthcm
