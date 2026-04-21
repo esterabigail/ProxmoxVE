@@ -14,7 +14,6 @@ network_check
 update_os
 
 NODE_VERSION="24" NODE_MODULE="pnpm" setup_nodejs
-
 PG_VERSION="17" setup_postgresql
 PG_DB_NAME="anchor" PG_DB_USER="anchor" setup_postgresql_db
 
