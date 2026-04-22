@@ -2,7 +2,7 @@
 source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
 
 # Copyright (c) 2021-2026 community-scripts ORG
-# Author: community-scripts
+# Author: MickLesk (CanbiZ)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/frappe/erpnext
 
@@ -24,12 +24,10 @@ function update_script() {
   header_info
   check_container_storage
   check_container_resources
-
   if [[ ! -d /opt/frappe-bench ]]; then
     msg_error "No ${APP} Installation Found!"
     exit
   fi
-
   msg_info "Updating ERPNext"
   $STD sudo -u frappe bash -c 'export PATH="$HOME/.local/bin:$PATH"; cd /opt/frappe-bench && bench update --reset'
   msg_ok "Updated ERPNext"
