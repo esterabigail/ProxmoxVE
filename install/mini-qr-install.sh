@@ -21,7 +21,7 @@ $STD apt install -y \
 msg_ok "Installed Dependencies"
 
 NODE_VERSION="20" setup_nodejs
-fetch_and_deploy_gh_release "mini-qr" "lyqht/mini-qr" "tarball" "latest" "/opt/mini-qr"
+fetch_and_deploy_gh_release "mini-qr" "lyqht/mini-qr" "tarball"
 
 msg_info "Building MiniQR"
 cd /opt/mini-qr
