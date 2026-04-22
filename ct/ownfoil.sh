@@ -47,7 +47,7 @@ function update_script() {
     msg_ok "Installed Dependencies"
 
     msg_info "Restoring Data"
-    cp -r /opt/ownfoil_data_backup /opt/ownfoil/app/config 2>/dev/null || true
+    cp -r /opt/ownfoil_data_backup /opt/ownfoil/app/config
     rm -rf /opt/ownfoil_data_backup
     msg_ok "Restored Data"
 
