@@ -35,7 +35,7 @@ function update_script() {
     msg_ok "Stopped Service"
 
     msg_info "Backing up Data"
-    cp -r /opt/ownfoil/app/config /opt/ownfoil_data_backup 2>/dev/null || true
+    cp -r /opt/ownfoil/app/config /opt/ownfoil_data_backup
     msg_ok "Backed up Data"
 
     CLEAN_INSTALL=1 fetch_and_deploy_gh_release "ownfoil" "a1ex4/ownfoil" "tarball"
