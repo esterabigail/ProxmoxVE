@@ -18,7 +18,7 @@ $STD apt install -y git
 msg_ok "Installed Dependencies"
 
 setup_uv
-fetch_and_deploy_gh_release "ownfoil" "a1ex4/ownfoil" "tarball" "latest" "/opt/ownfoil"
+fetch_and_deploy_gh_release "ownfoil" "a1ex4/ownfoil" "tarball"
 
 msg_info "Setting up Ownfoil"
 cd /opt/ownfoil
