@@ -34,7 +34,7 @@ ExecStart=/usr/bin/node server.js
 [Install]
 WantedBy=multi-user.target
 EOF
-systemctl -q --now enable dashy
+systemctl enable -q --now dashy
 msg_ok "Created Service"
 
 motd_ssh
