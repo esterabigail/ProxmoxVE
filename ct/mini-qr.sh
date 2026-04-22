@@ -34,7 +34,7 @@ function update_script() {
     systemctl stop caddy
     msg_ok "Stopped Service"
 
-    CLEAN_INSTALL=1 fetch_and_deploy_gh_release "mini-qr" "lyqht/mini-qr" "tarball" "latest" "/opt/mini-qr"
+    CLEAN_INSTALL=1 fetch_and_deploy_gh_release "mini-qr" "lyqht/mini-qr" "tarball"
 
     msg_info "Installing Dependencies"
     cd /opt/mini-qr
