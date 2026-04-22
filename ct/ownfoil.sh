@@ -38,7 +38,7 @@ function update_script() {
     cp -r /opt/ownfoil/app/config /opt/ownfoil_data_backup 2>/dev/null || true
     msg_ok "Backed up Data"
 
-    CLEAN_INSTALL=1 fetch_and_deploy_gh_release "ownfoil" "a1ex4/ownfoil" "tarball" "latest" "/opt/ownfoil"
+    CLEAN_INSTALL=1 fetch_and_deploy_gh_release "ownfoil" "a1ex4/ownfoil" "tarball"
 
     msg_info "Installing Dependencies"
     cd /opt/ownfoil
