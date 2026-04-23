@@ -38,19 +38,14 @@ function update_script() {
 
     msg_info "Backing up Configuration"
     cp -f /opt/mealie/mealie.env /opt/mealie.env
+    cp -f /opt/mealie/start.sh /opt/mealie.start.sh
     msg_ok "Backup completed"
 
     CLEAN_INSTALL=1 fetch_and_deploy_gh_release "mealie" "mealie-recipes/mealie" "tarball"
 
     msg_info "Restoring Configuration"
     mv -f /opt/mealie.env /opt/mealie/mealie.env
-    cat <<'STARTEOF' >/opt/mealie/start.sh
-#!/bin/bash
-set -a
-source /opt/mealie/mealie.env
-set +a
-exec uv run mealie
-STARTEOF
+    mv -f /opt/mealie.start.sh /opt/mealie/start.sh
     chmod +x /opt/mealie/start.sh
     msg_ok "Configuration restored"
 
