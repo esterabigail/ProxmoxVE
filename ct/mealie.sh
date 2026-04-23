@@ -42,6 +42,18 @@ function update_script() {
 
     CLEAN_INSTALL=1 fetch_and_deploy_gh_release "mealie" "mealie-recipes/mealie" "tarball"
 
+    msg_info "Restoring Configuration"
+    mv -f /opt/mealie.env /opt/mealie/mealie.env
+    cat <<'STARTEOF' >/opt/mealie/start.sh
+#!/bin/bash
+set -a
+source /opt/mealie/mealie.env
+set +a
+exec uv run mealie
+STARTEOF
+    chmod +x /opt/mealie/start.sh
+    msg_ok "Configuration restored"
+
     msg_info "Installing Python Dependencies with uv"
     cd /opt/mealie
     $STD uv sync --frozen --extra pgsql
@@ -69,18 +81,6 @@ function update_script() {
     cd /opt/mealie
     $STD uv run python -m nltk.downloader -d /nltk_data averaged_perceptron_tagger_eng
     msg_ok "Updated NLTK Data"
-
-    msg_info "Restoring Configuration"
-    mv -f /opt/mealie.env /opt/mealie/mealie.env
-    cat <<'STARTEOF' >/opt/mealie/start.sh
-#!/bin/bash
-set -a
-source /opt/mealie/mealie.env
-set +a
-exec uv run mealie
-STARTEOF
-    chmod +x /opt/mealie/start.sh
-    msg_ok "Configuration restored"
 
     msg_info "Starting Service"
     systemctl start mealie
