@@ -6126,9 +6126,21 @@ create_lxc_container() {
               rc=$?
               case $rc in
               0) : ;; # success - container created, continue
-              2) msg_error "LXC stack upgrade ignored. Please inspect: $LOGFILE" ; _flush_pct_log ; exit 231 ;;
-              3) msg_error "LXC stack upgrade failed. Please inspect: $LOGFILE" ; _flush_pct_log ; exit 231 ;;
-              4) msg_error "Cancelled by user." ; _flush_pct_log ; exit 231 ;;
+              2)
+                msg_error "LXC stack upgrade ignored. Please inspect: $LOGFILE"
+                _flush_pct_log
+                exit 231
+                ;;
+              3)
+                msg_error "LXC stack upgrade failed. Please inspect: $LOGFILE"
+                _flush_pct_log
+                exit 231
+                ;;
+              4)
+                msg_error "Cancelled by user."
+                _flush_pct_log
+                exit 231
+                ;;
               esac
             else
               msg_error "Container creation failed. See $LOGFILE"
@@ -6151,9 +6163,21 @@ create_lxc_container() {
             rc=$?
             case $rc in
             0) : ;; # success - container created, continue
-            2) msg_error "LXC stack upgrade ignored. Please inspect: $LOGFILE" ; _flush_pct_log ; exit 231 ;;
-            3) msg_error "LXC stack upgrade failed. Please inspect: $LOGFILE" ; _flush_pct_log ; exit 231 ;;
-            4) msg_error "Cancelled by user." ; _flush_pct_log ; exit 231 ;;
+            2)
+              msg_error "LXC stack upgrade ignored. Please inspect: $LOGFILE"
+              _flush_pct_log
+              exit 231
+              ;;
+            3)
+              msg_error "LXC stack upgrade failed. Please inspect: $LOGFILE"
+              _flush_pct_log
+              exit 231
+              ;;
+            4)
+              msg_error "Cancelled by user."
+              _flush_pct_log
+              exit 231
+              ;;
             esac
           else
             msg_error "Container creation failed. See $LOGFILE"
