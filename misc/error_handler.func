@@ -347,18 +347,14 @@ error_handler() {
 
     if [[ -z "$heap_hint_mb" ]] || ((heap_hint_mb < 1024)); then
       heap_hint_mb=1024
-    elif ((heap_hint_mb > 4096)); then
-      heap_hint_mb=4096
+    elif ((heap_hint_mb > 12288)); then
+      heap_hint_mb=12288
     fi
 
     if declare -f msg_warn >/dev/null 2>&1; then
-      msg_warn "Detected possible Node.js heap OOM during build."
-      msg_warn "Try: export NODE_OPTIONS=\"--max-old-space-size=${heap_hint_mb}\" before npm/pnpm/yarn build."
-      msg_warn "Recommendation: call setup_nodejs before build steps so heap defaults are applied automatically."
+      msg_warn "Possible Node.js heap OOM. Try: export NODE_OPTIONS=\"--max-old-space-size=${heap_hint_mb}\" and rerun the build."
     else
-      echo -e "${YW}Detected possible Node.js heap OOM during build.${CL}"
-      echo -e "${YW}Try: export NODE_OPTIONS=\"--max-old-space-size=${heap_hint_mb}\" before npm/pnpm/yarn build.${CL}"
-      echo -e "${YW}Recommendation: call setup_nodejs before build steps so heap defaults are applied automatically.${CL}"
+      echo -e "${YW}Possible Node.js heap OOM. Try: export NODE_OPTIONS=\"--max-old-space-size=${heap_hint_mb}\" and rerun the build.${CL}"
     fi
   fi
 

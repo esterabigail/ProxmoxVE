@@ -6426,7 +6426,7 @@ function setup_nodejs() {
   #   2) NODE_MAX_OLD_SPACE_SIZE (explicit MB override)
   #   3) var_ram (LXC memory setting, MB)
   #   4) /proc/meminfo (runtime memory detection)
-  # Auto value is clamped to 1024..4096 MB.
+  # Auto value is clamped to 1024..12288 MB.
   if [[ -z "${NODE_OPTIONS:-}" ]]; then
     local node_heap_mb=""
 
@@ -6445,8 +6445,8 @@ function setup_nodejs() {
 
     if [[ -z "$node_heap_mb" ]] || ((node_heap_mb < 1024)); then
       node_heap_mb=1024
-    elif ((node_heap_mb > 4096)); then
-      node_heap_mb=4096
+    elif ((node_heap_mb > 12288)); then
+      node_heap_mb=12288
     fi
 
     export NODE_OPTIONS="--max-old-space-size=${node_heap_mb}"
