@@ -30,7 +30,12 @@ function update_script() {
   fi
 
   msg_info "Updating ${APP}"
-  ensure_dependencies twingate-connector
+  ensure_apt_working || return 100
+  $STD apt update || msg_warn "apt update failed, continuing with cached package lists"
+  install_packages_with_retry twingate-connector || {
+    msg_error "Failed to update ${APP} package"
+    return 100
+  }
   $STD systemctl restart twingate-connector
   msg_ok "Updated successfully!"
   exit
