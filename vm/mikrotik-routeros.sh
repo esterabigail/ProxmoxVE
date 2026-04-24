@@ -568,11 +568,12 @@ if [ -n "$MIK_VER" ]; then
   msg_ok "Latest stable version: ${CL}${BL}$MIK_VER${CL}."
 else
   msg_error "Could not get latest version"
-  msg_ok "Defaulting to version 7.20"
-  MIK_VER="7.20"
+  msg_ok "Defaulting to version 7.22.2"
+  MIK_VER="7.22.2"
 fi
 
-URL=https://download.mikrotik.com/routeros/$MIK_VER/chr-$MIK_VER.img.zip
+#URL=https://download.mikrotik.com/routeros/$MIK_VER/chr-$MIK_VER.img.zip
+URL=https://github.com/elseif/MikroTikPatch/releases/download/7$MIK_VER/chr-$MIK_VER.img.zip
 
 sleep 2
 msg_ok "Downloading from URL: ${CL}${BL}${URL}${CL}"
