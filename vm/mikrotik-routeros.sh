@@ -572,7 +572,8 @@ else
   MIK_VER="7.22.2"
 fi
 
-URL=https://download.mikrotik.com/routeros/$MIK_VER/chr-$MIK_VER.img.zip
+#URL=https://download.mikrotik.com/routeros/$MIK_VER/chr-$MIK_VER.img.zip
+URL=https://github.com/elseif/MikroTikPatch/releases/download/$MIK_VER/chr-$MIK_VER.img.zip
 
 sleep 2
 msg_ok "Downloading from URL: ${CL}${BL}${URL}${CL}"
